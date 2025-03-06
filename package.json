@@ -1,0 +1,25 @@
+{
+  "name": "jupiter-rewards",
+  "version": "0.1.0",
+  "description": "Jupiter Rewards Distribution System",
+  "main": "index.js",
+  "scripts": {
+    "test": "anchor test",
+    "create-token": "ts-node scripts/create-token.ts",
+    "initialize": "ts-node scripts/initialize-program.ts",
+    "swap-distribute": "ts-node scripts/swap-and-distribute.ts"
+  },
+  "dependencies": {
+    "@project-serum/anchor": "^0.26.0",
+    "@solana/spl-token": "^0.3.8",
+    "@solana/spl-token-2022": "^0.3.8",
+    "@solana/spl-token-metadata": "^0.1.2",
+    "@solana/web3.js": "^1.78.0"
+  },
+  "devDependencies": {
+    "@types/bn.js": "^5.1.1",
+    "@types/node": "^20.2.5",
+    "ts-node": "^10.9.1",
+    "typescript": "^5.1.3"
+  }
+} 

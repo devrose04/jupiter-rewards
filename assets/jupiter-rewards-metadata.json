@@ -1,0 +1,32 @@
+{
+  "name": "Jupiter Rewards Token",
+  "symbol": "JUPR",
+  "description": "Token for Jupiter rewards distribution system",
+  "image": "https://example.com/jupiter-rewards-logo.png",
+  "external_url": "https://example.com/jupiter-rewards",
+  "attributes": [
+    {
+      "trait_type": "Tax Rate",
+      "value": "5%"
+    },
+    {
+      "trait_type": "Reward Interval",
+      "value": "5 minutes"
+    }
+  ],
+  "properties": {
+    "files": [
+      {
+        "uri": "https://example.com/jupiter-rewards-logo.png",
+        "type": "image/png"
+      }
+    ],
+    "category": "token",
+    "creators": [
+      {
+        "address": "YOUR_WALLET_ADDRESS",
+        "share": 100
+      }
+    ]
+  }
+} 
