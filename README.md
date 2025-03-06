@@ -74,7 +74,7 @@ anchor test
    ```
 3. Deploy to Solana mainnet:
    ```bash
-   anchor deploy --provider.cluster mainnet
+   anchor deploy --provider.cluster mainnet --provider.rpc https://falling-sleek-diagram.solana-mainnet.quiknode.pro/ea4bf92e2102ba33efed44f7ed02e04e0a3f9361
    ```
 
 ## License
