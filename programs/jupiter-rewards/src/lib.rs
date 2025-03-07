@@ -1,6 +1,6 @@
 use anchor_lang::prelude::*;
 use anchor_spl::{
-    token::{self, Token, Mint, TokenAccount, transfer, mint_to},
+    token::{self, TokenAccount, transfer, mint_to},
 };
 use solana_program::{
     program::invoke_signed,
