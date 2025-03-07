@@ -181,7 +181,6 @@ pub struct Initialize<'info> {
         bump,
         token::mint = jupiter_mint,
         token::authority = state,
-        token::token_program = token_program,
     )]
     pub tax_vault: Account<'info, TokenAccount>,
     
@@ -192,7 +191,6 @@ pub struct Initialize<'info> {
         bump,
         token::mint = jupiter_mint,
         token::authority = state,
-        token::token_program = token_program,
     )]
     pub reward_vault: Account<'info, TokenAccount>,
     
