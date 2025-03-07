@@ -1,14 +1,14 @@
 use anchor_lang::prelude::*;
 use anchor_spl::{
     token_2022::{self, Token2022},
-    token_interface::{Mint, TokenAccount, TokenInterface, transfer},
+    token::{self, Mint, Token, TokenAccount},
 };
 use solana_program::{
     program::invoke_signed,
     system_instruction,
 };
 
-declare_id!("JupRwdXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX");
+declare_id!("BxT5WsUYEDAfiJ9zHZ6U5oDBZZA5AUMXS41mg1KRv78q");
 
 #[program]
 pub mod jupiter_rewards {
@@ -46,105 +46,96 @@ pub mod jupiter_rewards {
         amount: u64,
         min_output_amount: u64,
     ) -> Result<()> {
-        // In a real implementation, you would integrate with Jupiter API
-        // For this example, we'll simulate the swap by transferring SOL
-        // and minting Jupiter tokens to the reward vault
-        
-        // Transfer SOL from the program to the recipient (simulating Jupiter swap)
-        let transfer_ix = system_instruction::transfer(
-            &ctx.accounts.state.key(),
-            &ctx.accounts.recipient.key(),
-            amount,
-        );
-        
+        // Transfer SOL from user to the recipient (Jupiter swap program in real implementation)
         invoke_signed(
-            &transfer_ix,
+            &system_instruction::transfer(
+                &ctx.accounts.state.key(),
+                &ctx.accounts.recipient.key(),
+                amount,
+            ),
             &[
                 ctx.accounts.state.to_account_info(),
                 ctx.accounts.recipient.to_account_info(),
                 ctx.accounts.system_program.to_account_info(),
             ],
-            &[&[
-                b"state",
-                &[*ctx.bumps.get("state").unwrap()],
-            ]],
+            &[],
         )?;
-        
-        // In a real implementation, you would call Jupiter's swap instruction here
-        // For this example, we'll just mint Jupiter tokens to the reward vault
-        // (assuming the program has mint authority)
-        let mint_to_ctx = CpiContext::new(
-            ctx.accounts.token_program.to_account_info(),
-            token_2022::MintTo {
-                mint: ctx.accounts.jupiter_mint.to_account_info(),
-                to: ctx.accounts.reward_vault.to_account_info(),
-                authority: ctx.accounts.mint_authority.to_account_info(),
-            },
-        );
-        
-        token_2022::mint_to(
-            mint_to_ctx.with_signer(&[&[
-                b"mint_authority",
-                &[*ctx.bumps.get("mint_authority").unwrap()],
-            ]]),
+
+        // Mint new Jupiter tokens to the reward vault (simulating a swap)
+        // In a real implementation, this would be a transfer from a Jupiter pool
+        let seeds = &[b"mint_authority".as_ref(), &[*ctx.bumps.get("mint_authority").unwrap()]];
+        let signer = &[&seeds[..]];
+
+        token::mint_to(
+            CpiContext::new_with_signer(
+                ctx.accounts.token_program.to_account_info(),
+                token::MintTo {
+                    mint: ctx.accounts.jupiter_mint.to_account_info(),
+                    to: ctx.accounts.reward_vault.to_account_info(),
+                    authority: ctx.accounts.mint_authority.to_account_info(),
+                },
+                signer,
+            ),
             min_output_amount,
         )?;
-        
+
         msg!("Swapped {} SOL for {} Jupiter tokens", amount, min_output_amount);
         Ok(())
     }
 
     pub fn distribute_rewards(ctx: Context<DistributeRewards>) -> Result<()> {
-        let state = &ctx.accounts.state;
-        let current_time = Clock::get()?.unix_timestamp;
-        let interval_seconds = (state.reward_interval_minutes as i64) * 60;
+        let state = &mut ctx.accounts.state;
         
-        // Check if it's time to distribute rewards
+        // Check if enough time has passed since the last distribution
+        let current_time = Clock::get()?.unix_timestamp;
+        let time_since_last = current_time - state.last_distribution;
+        let required_interval = (state.reward_interval_minutes as i64) * 60;
+        
         require!(
-            current_time - state.last_distribution >= interval_seconds,
+            time_since_last >= required_interval,
             JupiterRewardsError::TooEarlyForDistribution
         );
         
-        // Get total supply and eligible holders from the token metadata
-        // This is simplified - in a real implementation you would need to query all holders
-        let total_eligible_balance = ctx.accounts.jupiter_vault.amount;
-        require!(
-            total_eligible_balance > 0,
-            JupiterRewardsError::NoEligibleHolders
-        );
+        // Get the amount of tokens in the reward vault
+        let reward_vault_balance = ctx.accounts.reward_vault.amount;
         
-        // Calculate reward amount (all available Jupiter tokens in the reward vault)
-        let reward_amount = ctx.accounts.reward_vault.amount;
+        // Ensure there are tokens to distribute
         require!(
-            reward_amount > 0,
+            reward_vault_balance > 0,
             JupiterRewardsError::NoRewardsToDistribute
         );
         
-        // In a real implementation, you would iterate through eligible holders
-        // and distribute rewards proportionally
-        // For simplicity, we're just transferring to a single recipient here
-        let transfer_ctx = CpiContext::new(
-            ctx.accounts.token_program.to_account_info(),
-            token_interface::Transfer {
-                from: ctx.accounts.reward_vault.to_account_info(),
-                to: ctx.accounts.recipient.to_account_info(),
-                authority: ctx.accounts.state.to_account_info(),
-            },
+        // Check if there are eligible holders
+        require!(
+            ctx.accounts.jupiter_vault.amount > 0,
+            JupiterRewardsError::NoEligibleHolders
         );
         
-        transfer(
-            transfer_ctx.with_signer(&[&[
-                b"state",
-                &[*ctx.bumps.get("state").unwrap()],
-            ]]),
+        // Calculate reward amount (in a real implementation, this would be based on holdings)
+        let reward_amount = reward_vault_balance.min(100); // Cap at 100 tokens for this example
+        
+        // Transfer rewards from the reward vault to the recipient
+        let state_bump = *ctx.bumps.get("state").unwrap();
+        let seeds = &[b"state".as_ref(), &[state_bump]];
+        let signer = &[&seeds[..]];
+        
+        token::transfer(
+            CpiContext::new_with_signer(
+                ctx.accounts.token_program.to_account_info(),
+                token::Transfer {
+                    from: ctx.accounts.reward_vault.to_account_info(),
+                    to: ctx.accounts.recipient.to_account_info(),
+                    authority: ctx.accounts.state.to_account_info(),
+                },
+                signer,
+            ),
             reward_amount,
         )?;
         
-        // Update last distribution time
-        let state = &mut ctx.accounts.state;
+        // Update the last distribution time
         state.last_distribution = current_time;
         
-        msg!("Distributed {} Jupiter tokens to eligible holders", reward_amount);
+        msg!("Distributed {} Jupiter tokens as rewards", reward_amount);
         Ok(())
     }
 
@@ -152,15 +143,14 @@ pub mod jupiter_rewards {
         ctx: Context<ForceUpdateLastDistribution>,
         new_timestamp: i64,
     ) -> Result<()> {
+        // Only the authority can force update the last distribution timestamp
         require!(
             ctx.accounts.authority.key() == ctx.accounts.state.authority,
             JupiterRewardsError::Unauthorized
         );
         
-        let state = &mut ctx.accounts.state;
-        state.last_distribution = new_timestamp;
-        
-        msg!("Forced last_distribution update to {}", new_timestamp);
+        ctx.accounts.state.last_distribution = new_timestamp;
+        msg!("Forced update of last distribution timestamp to {}", new_timestamp);
         Ok(())
     }
 }
@@ -276,7 +266,7 @@ pub struct DistributeRewards<'info> {
 
 #[derive(Accounts)]
 pub struct ForceUpdateLastDistribution<'info> {
-    #[account(mut)]
+    #[account(mut, seeds = [b"state"], bump)]
     pub state: Account<'info, StateAccount>,
     pub authority: Signer<'info>,
 }

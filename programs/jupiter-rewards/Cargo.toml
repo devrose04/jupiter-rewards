@@ -1,0 +1,21 @@
+[package]
+name = "jupiter-rewards"
+version = "0.1.0"
+description = "Jupiter Rewards Distribution System"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "jupiter_rewards"
+
+[features]
+no-entrypoint = []
+no-idl = []
+no-log-ix-name = []
+cpi = ["no-entrypoint"]
+default = []
+
+[dependencies]
+anchor-lang = "0.28.0"
+anchor-spl = { version = "0.28.0", features = ["token_2022"] }
+solana-program = "1.16.0"
