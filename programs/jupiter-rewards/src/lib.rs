@@ -172,7 +172,8 @@ pub struct Initialize<'info> {
     #[account(mut)]
     pub authority: Signer<'info>,
     
-    pub jupiter_mint: Account<'info, Mint>,
+    /// CHECK: This is the mint of the Jupiter token
+    pub jupiter_mint: AccountInfo<'info>,
     
     #[account(
         init,
@@ -195,7 +196,9 @@ pub struct Initialize<'info> {
     pub reward_vault: Account<'info, TokenAccount>,
     
     pub system_program: Program<'info, System>,
-    pub token_program: Program<'info, Token>,
+    /// CHECK: This is the token program
+    #[account(address = token::ID)]
+    pub token_program: AccountInfo<'info>,
     pub rent: Sysvar<'info, Rent>,
 }
 
@@ -211,7 +214,9 @@ pub struct CollectTax<'info> {
     )]
     pub tax_vault: Account<'info, TokenAccount>,
     
-    pub token_program: Program<'info, Token>,
+    /// CHECK: This is the token program
+    #[account(address = token::ID)]
+    pub token_program: AccountInfo<'info>,
 }
 
 #[derive(Accounts)]
@@ -223,8 +228,9 @@ pub struct SwapSolForJupiter<'info> {
     #[account(mut)]
     pub recipient: AccountInfo<'info>,
     
+    /// CHECK: This is the mint of the Jupiter token
     #[account(mut)]
-    pub jupiter_mint: Account<'info, Mint>,
+    pub jupiter_mint: AccountInfo<'info>,
     
     #[account(
         mut,
@@ -237,7 +243,9 @@ pub struct SwapSolForJupiter<'info> {
     #[account(seeds = [b"mint_authority"], bump)]
     pub mint_authority: AccountInfo<'info>,
     
-    pub token_program: Program<'info, Token>,
+    /// CHECK: This is the token program
+    #[account(address = token::ID)]
+    pub token_program: AccountInfo<'info>,
     pub system_program: Program<'info, System>,
 }
 
@@ -262,9 +270,13 @@ pub struct DistributeRewards<'info> {
     )]
     pub jupiter_vault: Account<'info, TokenAccount>,
     
-    pub jupiter_mint: Account<'info, Mint>,
+    /// CHECK: This is the mint of the Jupiter token
+    #[account(constraint = jupiter_mint.key() == state.jupiter_mint)]
+    pub jupiter_mint: AccountInfo<'info>,
     
-    pub token_program: Program<'info, Token>,
+    /// CHECK: This is the token program
+    #[account(address = token::ID)]
+    pub token_program: AccountInfo<'info>,
 }
 
 #[derive(Accounts)]
