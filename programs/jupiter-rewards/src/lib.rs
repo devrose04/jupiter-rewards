@@ -17,19 +17,18 @@ pub mod jupiter_rewards {
     pub fn initialize(
         ctx: Context<Initialize>,
         tax_rate: u16,
-        reward_interval_minutes: u8,
+        reward_interval: i64,
     ) -> Result<()> {
         let state = &mut ctx.accounts.state;
         state.authority = ctx.accounts.authority.key();
+        state.tax_rate = tax_rate;
+        state.last_distribution = Clock::get()?.unix_timestamp;
+        state.reward_interval_minutes = (reward_interval / 60) as u8; // Convert seconds to minutes
+        
+        // We need to set these fields as well
         state.jupiter_mint = ctx.accounts.jupiter_mint.key();
         state.tax_vault = ctx.accounts.tax_vault.key();
         state.reward_vault = ctx.accounts.reward_vault.key();
-        state.tax_rate = tax_rate;
-        state.reward_interval_minutes = reward_interval_minutes;
-        state.last_distribution = Clock::get()?.unix_timestamp;
-        
-        msg!("Jupiter Rewards initialized with {}% tax rate", tax_rate as f64 / 100.0);
-        msg!("Rewards will be distributed every {} minutes", reward_interval_minutes);
         
         Ok(())
     }
@@ -87,11 +86,11 @@ pub mod jupiter_rewards {
         // Get the current time and state data before borrowing state mutably
         let current_time = Clock::get()?.unix_timestamp;
         let last_distribution = ctx.accounts.state.last_distribution;
-        let reward_interval_minutes = ctx.accounts.state.reward_interval_minutes;
+        let reward_interval = ctx.accounts.state.reward_interval_minutes as i64 * 60;
         
         // Check if enough time has passed since the last distribution
         let time_since_last = current_time - last_distribution;
-        let required_interval = (reward_interval_minutes as i64) * 60;
+        let required_interval = reward_interval;
         
         require!(
             time_since_last >= required_interval,
@@ -172,33 +171,19 @@ pub struct Initialize<'info> {
     #[account(mut)]
     pub authority: Signer<'info>,
     
-    /// CHECK: This is the mint of the Jupiter token
+    /// CHECK: This is the Jupiter token mint
     pub jupiter_mint: AccountInfo<'info>,
     
-    #[account(
-        init,
-        payer = authority,
-        seeds = [b"tax_vault"],
-        bump,
-        token::mint = jupiter_mint,
-        token::authority = state,
-    )]
-    pub tax_vault: Account<'info, TokenAccount>,
+    /// CHECK: This is the tax vault account
+    pub tax_vault: AccountInfo<'info>,
     
-    #[account(
-        init,
-        payer = authority,
-        seeds = [b"reward_vault"],
-        bump,
-        token::mint = jupiter_mint,
-        token::authority = state,
-    )]
-    pub reward_vault: Account<'info, TokenAccount>,
+    /// CHECK: This is the reward vault account
+    pub reward_vault: AccountInfo<'info>,
+    
+    // Add the Token Program account
+    pub token_program: Program<'info, anchor_spl::token::Token>,
     
     pub system_program: Program<'info, System>,
-    /// CHECK: This is the token program
-    #[account(address = token::ID)]
-    pub token_program: AccountInfo<'info>,
     pub rent: Sysvar<'info, Rent>,
 }
 

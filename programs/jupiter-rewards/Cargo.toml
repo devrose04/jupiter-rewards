@@ -15,7 +15,10 @@ no-log-ix-name = []
 cpi = ["no-entrypoint"]
 default = []
 
+[profile.release]
+overflow-checks = false
+
 [dependencies]
-anchor-lang = "0.26.0"
-anchor-spl = { version = "0.26.0", features = ["token"] }
-solana-program = "1.14.16"
+anchor-lang = "0.28.0"
+anchor-spl = { version = "0.28.0", features = ["token"] }
+solana-program = "1.16.0"
