@@ -9,7 +9,8 @@
         "setup": "./setup.sh",
         "lint:fix": "prettier */*.js \"*/**/*{.js,.ts}\" -w",
         "lint": "prettier */*.js \"*/**/*{.js,.ts}\" --check",
-        "deploy": "ts-node scripts/deploy.ts"
+        "deploy": "ts-node scripts/deploy.ts",
+        "update-metadata": "ts-node scripts/update-token-metadata.ts"
     },
     "keywords": [
         "solana",
@@ -22,6 +23,7 @@
     "license": "MIT",
     "dependencies": {
         "@coral-xyz/anchor": "^0.28.0",
+        "@metaplex-foundation/js": "^0.20.1",
         "@solana/spl-token": "^0.3.11",
         "@solana/web3.js": "^1.78.0"
     },

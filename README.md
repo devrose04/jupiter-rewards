@@ -12,6 +12,7 @@ Jupiter Rewards is a Solana program that implements a rewards distribution syste
 - **Reward Distribution**: Periodically distributes collected taxes as rewards to token holders
 - **SOL Swaps**: Allows users to swap SOL for Jupiter tokens
 - **Admin Controls**: Provides administrative functions for managing the reward system
+- **Token Metadata**: Customizable token name, symbol, and logo using Metaplex Token Metadata
 
 ## Architecture
 
@@ -21,6 +22,7 @@ The program consists of several key components:
 2. **Tax Vault**: Collects taxes from token transfers using Token-2022's transfer fee extension
 3. **Reward Vault**: Holds tokens for distribution as rewards
 4. **Mint Authority**: A PDA that has authority to mint Jupiter tokens
+5. **Token Metadata**: On-chain metadata for the token including name, symbol, and logo
 
 ## Instructions
 
@@ -40,6 +42,16 @@ This program uses the Token-2022 program (`TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXE
 - **InterfaceAccount**: Uses `InterfaceAccount` for compatibility with both Token and Token-2022 programs
 - **Transfer Checked**: Uses the safer `transfer_checked` function that verifies mint and decimals
 
+## Token Metadata
+
+The token metadata (name, symbol, and logo) can be customized using the Metaplex Token Metadata program. To update the token metadata:
+
+1. Place your token logo in the `assets/` directory
+2. Update the configuration in `scripts/update-token-metadata.ts`
+3. Run `yarn update-metadata` or `npm run update-metadata`
+
+See the [Token Metadata Instructions](./assets/README.md) for more details.
+
 ## Project Structure
 
 ```
@@ -52,7 +64,10 @@ jupiter-rewards/
 ├── tests/
 │   └── jupiter-rewards.ts     # Test suite for the program
 ├── scripts/
-│   └── deploy.ts              # Deployment script
+│   ├── deploy.ts              # Deployment script
+│   └── update-token-metadata.ts # Token metadata update script
+├── assets/
+│   └── README.md              # Token metadata instructions
 ├── Anchor.toml                # Anchor configuration
 ├── Cargo.toml                 # Workspace configuration
 ├── build.sh                   # Build script
