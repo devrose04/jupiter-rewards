@@ -8,7 +8,8 @@
         "build": "./build.sh",
         "setup": "./setup.sh",
         "lint:fix": "prettier */*.js \"*/**/*{.js,.ts}\" -w",
-        "lint": "prettier */*.js \"*/**/*{.js,.ts}\" --check"
+        "lint": "prettier */*.js \"*/**/*{.js,.ts}\" --check",
+        "deploy": "ts-node scripts/deploy.ts"
     },
     "keywords": [
         "solana",
@@ -21,17 +22,18 @@
     "license": "MIT",
     "dependencies": {
         "@coral-xyz/anchor": "^0.28.0",
-        "@solana/spl-token": "^0.3.8",
+        "@solana/spl-token": "^0.3.11",
         "@solana/web3.js": "^1.78.0"
     },
     "devDependencies": {
         "@types/bn.js": "^5.1.1",
         "@types/chai": "^4.3.5",
         "@types/mocha": "^10.0.1",
+        "@types/node": "^22.13.9",
         "chai": "^4.3.7",
         "mocha": "^10.2.0",
+        "prettier": "^2.6.2",
         "ts-mocha": "^10.0.0",
-        "typescript": "^5.1.6",
-        "prettier": "^2.6.2"
+        "typescript": "^5.1.6"
     }
 }

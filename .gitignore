@@ -1,6 +1,7 @@
 
 .anchor
 .DS_Store
+.cargo
 target
 **/*.rs.bk
 node_modules
