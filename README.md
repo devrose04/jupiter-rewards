@@ -44,11 +44,60 @@ This program uses the Token-2022 program (`TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXE
 
 ## Token Metadata
 
-The token metadata (name, symbol, and logo) can be customized using the Metaplex Token Metadata program. To update the token metadata:
+The token metadata (name, symbol, and logo) can be customized using the Metaplex Token Metadata program. This allows you to set a custom name, ticker symbol, and logo for your token that will be displayed in wallets and explorers.
 
-1. Place your token logo in the `assets/` directory
-2. Update the configuration in `scripts/update-token-metadata.ts`
-3. Run `yarn update-metadata` or `npm run update-metadata`
+### Changing Token Name and Symbol
+
+To update your token's name and symbol:
+
+1. Edit the configuration in `scripts/update-token-metadata.ts`:
+   ```typescript
+   // Configuration - CHANGE THESE VALUES
+   const TOKEN_NAME = "Jupiter Rewards"; // Change to your desired token name
+   const TOKEN_SYMBOL = "JPR"; // Change to your desired token symbol/ticker
+   const TOKEN_DESCRIPTION = "Jupiter Rewards token for the Jupiter ecosystem";
+   ```
+
+2. Replace these values with your desired token name and symbol.
+
+### Adding a Logo Image
+
+To add or update your token's logo:
+
+1. Place your logo image in the `assets/` directory (recommended formats: PNG or SVG)
+2. Update the `LOGO_PATH` in `scripts/update-token-metadata.ts`:
+   ```typescript
+   const LOGO_PATH = "./assets/logo.svg"; // Path to your logo file
+   ```
+
+3. You can use the included placeholder logo generator to create a simple logo:
+   ```bash
+   yarn create-logo
+   ```
+
+### Updating Token Metadata
+
+After deployment, you'll need to get your token's mint address:
+
+1. Save your deployment logs:
+   ```bash
+   yarn deploy > deploy-logs.txt
+   ```
+
+2. Extract the mint address:
+   ```bash
+   yarn extract-mint deploy-logs.txt
+   ```
+
+3. Update the mint address in `scripts/update-token-metadata.ts`:
+   ```typescript
+   const jupiterMintAddress = new PublicKey("YOUR_TOKEN_MINT_ADDRESS");
+   ```
+
+4. Run the metadata update script:
+   ```bash
+   yarn update-metadata
+   ```
 
 See the [Token Metadata Instructions](./assets/README.md) for more details.
 

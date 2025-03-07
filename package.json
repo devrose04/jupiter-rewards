@@ -10,7 +10,9 @@
         "lint:fix": "prettier */*.js \"*/**/*{.js,.ts}\" -w",
         "lint": "prettier */*.js \"*/**/*{.js,.ts}\" --check",
         "deploy": "ts-node scripts/deploy.ts",
-        "update-metadata": "ts-node scripts/update-token-metadata.ts"
+        "update-metadata": "ts-node scripts/update-token-metadata.ts",
+        "create-logo": "node scripts/create-placeholder-logo.js",
+        "extract-mint": "node scripts/get-token-mint.js"
     },
     "keywords": [
         "solana",
