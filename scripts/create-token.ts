@@ -14,8 +14,8 @@ import {
   TOKEN_2022_PROGRAM_ID,
   createInitializePermanentDelegateInstruction,
   createInitializeMetadataPointerInstruction,
-} from '@solana-program/token-2022';
-import { createInitializeMetadataInstruction } from '@solana/spl-token-metadata';
+  createInitializeMetadataInstruction
+} from '@solana/spl-token';
 import * as fs from 'fs';
 
 async function createJupiterToken() {
