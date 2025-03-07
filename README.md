@@ -188,37 +188,51 @@ The test suite (`tests/jupiter-rewards.ts`) includes comprehensive tests for all
 
 ## Deployment
 
-There are two ways to deploy the program:
+### Prerequisites
 
-### 1. Using Anchor
+Before deploying the program, ensure you have a running Solana validator. The deployment process connects to a validator at `http://localhost:8899` by default.
 
-To deploy the program to a Solana cluster using Anchor:
+### Starting a Local Validator
+
+To start a local Solana validator, run:
 
 ```bash
-# Configure your Solana CLI to use the desired cluster
-solana config set --url https://api.devnet.solana.com
+solana-test-validator
+```
 
-# Deploy the program
+If you're using Anchor, you can use:
+
+```bash
+anchor localnet
+```
+
+Keep the validator running in a separate terminal window during development and deployment.
+
+### Verifying Validator Status
+
+You can check if your validator is running with:
+
+```bash
+solana cluster-version
+```
+
+### Deploying the Program
+
+Once your validator is running, deploy the program with:
+
+```bash
 anchor deploy
 ```
 
-### 2. Using the Deploy Script
-
-We've provided a custom deploy script that handles the complete deployment process:
+or using the Solana CLI:
 
 ```bash
-yarn deploy
+solana program deploy target/deploy/jupiter_rewards.so
 ```
 
-The deploy script (`scripts/deploy.ts`) performs the following actions:
-- Creates a new Jupiter token mint using the Token-2022 program
-- Derives PDAs for the state account, tax vault, and reward vault
-- Initializes the Jupiter Rewards program with the configured tax rate and reward interval
-- Outputs all the important addresses and transaction details
+### Troubleshooting
 
-You can configure the deployment parameters by modifying the constants at the top of the script:
-- `TAX_RATE`: The tax rate in basis points (e.g., 500 = 5.00%)
-- `REWARD_INTERVAL_MINUTES`: The interval between reward distributions in minutes
+If you encounter a "Connection refused" error during deployment, it typically means the local validator isn't running. Start the validator and try again.
 
 ## Usage
 
