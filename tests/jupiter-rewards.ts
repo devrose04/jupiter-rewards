@@ -6,7 +6,7 @@ import {
   createMint, 
   getOrCreateAssociatedTokenAccount,
   mintTo
-} from "@solana/spl-token-2022";
+} from "@solana-program/token-2022";
 import { expect } from "chai";
 
 describe("jupiter-rewards", () => {

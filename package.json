@@ -11,8 +11,8 @@
   },
   "dependencies": {
     "@project-serum/anchor": "^0.26.0",
-    "@solana/spl-token": "^0.3.8",
-    "@solana/spl-token-2022": "^0.3.8",
+    "@solana/spl-token": "^0.4.12",
+    "@solana-program/token-2022": "^0.3.4",
     "@solana/spl-token-metadata": "^0.1.2",
     "@solana/web3.js": "^1.78.0"
   },

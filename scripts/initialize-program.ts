@@ -2,7 +2,7 @@ import { Connection, Keypair, PublicKey } from '@solana/web3.js';
 import * as anchor from '@project-serum/anchor';
 import { Program } from '@project-serum/anchor';
 import { JupiterRewards } from '../target/types/jupiter_rewards';
-import { TOKEN_2022_PROGRAM_ID, getAssociatedTokenAddress } from '@solana/spl-token-2022';
+import { TOKEN_2022_PROGRAM_ID, getAssociatedTokenAddress } from '@solana-program/token-2022';
 import * as fs from 'fs';
 
 async function main() {

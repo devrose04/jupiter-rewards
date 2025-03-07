@@ -14,7 +14,7 @@ import {
   TOKEN_2022_PROGRAM_ID,
   createInitializePermanentDelegateInstruction,
   createInitializeMetadataPointerInstruction,
-} from '@solana/spl-token-2022';
+} from '@solana-program/token-2022';
 import { createInitializeMetadataInstruction } from '@solana/spl-token-metadata';
 import * as fs from 'fs';
 
