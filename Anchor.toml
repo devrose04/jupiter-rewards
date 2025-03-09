@@ -15,6 +15,7 @@ url = "https://api.apr.dev"
 cluster = "mainnet"
 wallet = "~/.config/solana/id.json"
 url = "https://falling-sleek-diagram.solana-mainnet.quiknode.pro/ea4bf92e2102ba33efed44f7ed02e04e0a3f9361"
+endpoint = "https://falling-sleek-diagram.solana-mainnet.quiknode.pro/ea4bf92e2102ba33efed44f7ed02e04e0a3f9361"
 
 [scripts]
 test = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/**/*.ts"

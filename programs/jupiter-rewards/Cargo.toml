@@ -16,11 +16,15 @@ cpi = ["no-entrypoint"]
 default = []
 
 [profile.release]
-overflow-checks = false
+overflow-checks = true
+lto = "fat"
+codegen-units = 1
 
 [dependencies]
 anchor-lang = "0.28.0"
-anchor-spl = { version = "0.28.0", features = ["token"] }
+anchor-spl = { version = "0.28.0", features = ["token", "token_2022"] }
 solana-program = "=1.16.3"
 spl-token = { version = "=3.5.0", features = ["no-entrypoint"] }
+spl-token-2022 = { version = "=0.6.1", features = ["no-entrypoint"] }
+spl-token-metadata-interface = "=0.2.0"
 spl-memo = "=4.0.0"
