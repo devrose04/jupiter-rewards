@@ -1,7 +1,7 @@
 import * as anchor from "@coral-xyz/anchor";
 import { AnchorProvider } from "@coral-xyz/anchor";
 // We'll use any type for now since the target types may not be generated yet
-import { JupiterRewards } from "../target/types/jupiter_rewards";
+// import { JupiterRewards } from "../target/types/jupiter_rewards";
 import { 
   PublicKey, 
   Keypair, 
