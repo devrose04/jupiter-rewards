@@ -1,13 +1,11 @@
 use anchor_lang::prelude::*;
-use anchor_spl::{
-    token::{self, TokenAccount, transfer, mint_to},
-};
+use anchor_spl::token::{self, TokenAccount, transfer, mint_to, Mint};
 use solana_program::{
-    program::invoke_signed,
+    program::invoke,
     system_instruction,
 };
 
-// Token Program ID: TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA
+// Token Program ID for Token-2022: TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb
 declare_id!("BxT5WsUYEDAfiJ9zHZ6U5oDBZZA5AUMXS41mg1KRv78q");
 
 #[program]
@@ -19,24 +17,61 @@ pub mod jupiter_rewards {
         tax_rate: u16,
         reward_interval: i64,
     ) -> Result<()> {
+        // Validate inputs
+        require!(
+            tax_rate <= 1000, // Max 10%
+            JupiterRewardsError::InvalidTaxRate
+        );
+        
+        require!(
+            reward_interval >= 60, // Min 1 minute
+            JupiterRewardsError::InvalidRewardInterval
+        );
+        
         let state = &mut ctx.accounts.state;
         state.authority = ctx.accounts.authority.key();
         state.tax_rate = tax_rate;
         state.last_distribution = Clock::get()?.unix_timestamp;
         state.reward_interval_minutes = (reward_interval / 60) as u8; // Convert seconds to minutes
         
-        // We need to set these fields as well
+        // Set the Jupiter mint, tax vault, and reward vault
         state.jupiter_mint = ctx.accounts.jupiter_mint.key();
         state.tax_vault = ctx.accounts.tax_vault.key();
         state.reward_vault = ctx.accounts.reward_vault.key();
         
+        msg!("Jupiter rewards system initialized");
         Ok(())
     }
 
-    pub fn collect_tax(_ctx: Context<CollectTax>) -> Result<()> {
-        // This function is called by the permanent delegate to collect tax
-        // The transfer fee extension automatically collects the tax into the fee account
-        msg!("Tax collected into vault using transfer fee");
+    pub fn collect_tax(ctx: Context<CollectTax>) -> Result<()> {
+        // This function is called to collect tax from transactions
+        // Since we're not using Token-2022 transfer fees, we'll implement manual tax collection
+        
+        // Calculate tax amount (5% of the transaction amount)
+        let transaction_amount = ctx.accounts.user_token_account.amount;
+        let tax_rate = ctx.accounts.state.tax_rate;
+        let tax_amount = (transaction_amount * tax_rate as u64) / 10000;
+        
+        // Check if there are tokens to tax
+        if tax_amount == 0 {
+            msg!("No tokens to tax");
+            return Ok(());
+        }
+        
+        // Transfer the tax from the user's account to the tax vault
+        transfer(
+            CpiContext::new(
+                ctx.accounts.token_program.to_account_info(),
+                token::Transfer {
+                    from: ctx.accounts.user_token_account.to_account_info(),
+                    to: ctx.accounts.tax_vault.to_account_info(),
+                    authority: ctx.accounts.user.to_account_info(),
+                },
+            ),
+            tax_amount,
+        )?;
+        
+        msg!("Tax collected: {} tokens", tax_amount);
         Ok(())
     }
 
@@ -46,24 +81,23 @@ pub mod jupiter_rewards {
         min_output_amount: u64,
     ) -> Result<()> {
         // Transfer SOL from user to the recipient (Jupiter swap program in real implementation)
-        invoke_signed(
+        invoke(
             &system_instruction::transfer(
-                &ctx.accounts.state.key(),
+                &ctx.accounts.user.key(),
                 &ctx.accounts.recipient.key(),
                 amount,
             ),
             &[
-                ctx.accounts.state.to_account_info(),
+                ctx.accounts.user.to_account_info(),
                 ctx.accounts.recipient.to_account_info(),
                 ctx.accounts.system_program.to_account_info(),
             ],
-            &[],
         )?;
 
         // Mint new Jupiter tokens to the reward vault (simulating a swap)
         // In a real implementation, this would be a transfer from a Jupiter pool
-        let seeds = &[b"mint_authority".as_ref(), &[*ctx.bumps.get("mint_authority").unwrap()]];
-        let signer = &[&seeds[..]];
+        let mint_authority_seeds = &[b"mint_authority".as_ref(), &[*ctx.bumps.get("mint_authority").unwrap()]];
+        let mint_authority_signer = &[&mint_authority_seeds[..]];
 
         mint_to(
             CpiContext::new_with_signer(
@@ -73,7 +107,7 @@ pub mod jupiter_rewards {
                     to: ctx.accounts.reward_vault.to_account_info(),
                     authority: ctx.accounts.mint_authority.to_account_info(),
                 },
-                signer,
+                mint_authority_signer,
             ),
             min_output_amount,
         )?;
@@ -88,7 +122,7 @@ pub mod jupiter_rewards {
         let last_distribution = ctx.accounts.state.last_distribution;
         let reward_interval = ctx.accounts.state.reward_interval_minutes as i64 * 60;
         
-        // Check if enough time has passed since the last distribution
+        // Check if enough time has passed since the last distribution (5 minutes)
         let time_since_last = current_time - last_distribution;
         let required_interval = reward_interval;
         
@@ -112,15 +146,18 @@ pub mod jupiter_rewards {
             JupiterRewardsError::NoEligibleHolders
         );
         
-        // Calculate reward amount (in a real implementation, this would be based on holdings)
-        let reward_amount = reward_vault_balance.min(100); // Cap at 100 tokens for this example
+        // Calculate reward amount based on holdings
+        // In a real implementation, this would be proportional to the user's holdings
+        let total_supply = ctx.accounts.jupiter_mint_info.supply;
+        let holder_percentage = (ctx.accounts.jupiter_vault.amount as f64 / total_supply as f64) * 100.0;
+        let reward_amount = ((reward_vault_balance as f64 * holder_percentage / 100.0) as u64)
+            .min(reward_vault_balance); // Ensure we don't exceed the vault balance
         
         // Transfer rewards from the reward vault to the recipient
         let state_bump = *ctx.bumps.get("state").unwrap();
         let seeds = &[b"state".as_ref(), &[state_bump]];
         let signer = &[&seeds[..]];
         
-        // Using transfer as recommended
         transfer(
             CpiContext::new_with_signer(
                 ctx.accounts.token_program.to_account_info(),
@@ -137,7 +174,7 @@ pub mod jupiter_rewards {
         // Update the last distribution time
         ctx.accounts.state.last_distribution = current_time;
         
-        msg!("Distributed {} Jupiter tokens as rewards", reward_amount);
+        msg!("Distributed {} Jupiter tokens as rewards ({}% of holdings)", reward_amount, holder_percentage);
         Ok(())
     }
 
@@ -172,16 +209,26 @@ pub struct Initialize<'info> {
     pub authority: Signer<'info>,
     
     /// CHECK: This is the Jupiter token mint
+    #[account(mut)]
     pub jupiter_mint: AccountInfo<'info>,
     
-    /// CHECK: This is the tax vault account
-    pub tax_vault: AccountInfo<'info>,
+    #[account(
+        mut,
+        token::mint = jupiter_mint,
+        token::authority = state,
+    )]
+    pub tax_vault: Account<'info, TokenAccount>,
     
-    /// CHECK: This is the reward vault account
-    pub reward_vault: AccountInfo<'info>,
+    #[account(
+        mut,
+        token::mint = jupiter_mint,
+        token::authority = state,
+    )]
+    pub reward_vault: Account<'info, TokenAccount>,
     
-    // Add the Token Program account
-    pub token_program: Program<'info, anchor_spl::token::Token>,
+    /// CHECK: Token program
+    #[account(address = token::ID)]
+    pub token_program: AccountInfo<'info>,
     
     pub system_program: Program<'info, System>,
     pub rent: Sysvar<'info, Rent>,
@@ -189,17 +236,31 @@ pub struct Initialize<'info> {
 
 #[derive(Accounts)]
 pub struct CollectTax<'info> {
-    #[account(mut)]
+    #[account(mut, seeds = [b"state"], bump)]
     pub state: Account<'info, StateAccount>,
+    
+    #[account(mut)]
+    pub user: Signer<'info>,
+    
+    #[account(
+        mut,
+        token::mint = jupiter_mint,
+    )]
+    pub user_token_account: Account<'info, TokenAccount>,
+    
+    /// CHECK: This is the Jupiter token mint
+    pub jupiter_mint: AccountInfo<'info>,
     
     #[account(
         mut,
         seeds = [b"tax_vault"],
         bump,
+        token::mint = jupiter_mint,
+        token::authority = state,
     )]
     pub tax_vault: Account<'info, TokenAccount>,
     
-    /// CHECK: This is the token program
+    /// CHECK: Token program
     #[account(address = token::ID)]
     pub token_program: AccountInfo<'info>,
 }
@@ -209,18 +270,23 @@ pub struct SwapSolForJupiter<'info> {
     #[account(mut, seeds = [b"state"], bump)]
     pub state: Account<'info, StateAccount>,
     
+    #[account(mut)]
+    pub user: Signer<'info>,
+    
     /// CHECK: This is the recipient of the SOL (would be Jupiter program in real implementation)
     #[account(mut)]
     pub recipient: AccountInfo<'info>,
     
     /// CHECK: This is the mint of the Jupiter token
-    #[account(mut)]
+    #[account(mut, constraint = jupiter_mint.key() == state.jupiter_mint)]
     pub jupiter_mint: AccountInfo<'info>,
     
     #[account(
         mut,
         seeds = [b"reward_vault"],
         bump,
+        token::mint = jupiter_mint,
+        token::authority = state,
     )]
     pub reward_vault: Account<'info, TokenAccount>,
     
@@ -228,7 +294,7 @@ pub struct SwapSolForJupiter<'info> {
     #[account(seeds = [b"mint_authority"], bump)]
     pub mint_authority: AccountInfo<'info>,
     
-    /// CHECK: This is the token program
+    /// CHECK: Token program
     #[account(address = token::ID)]
     pub token_program: AccountInfo<'info>,
     pub system_program: Program<'info, System>,
@@ -243,10 +309,15 @@ pub struct DistributeRewards<'info> {
         mut,
         seeds = [b"reward_vault"],
         bump,
+        token::mint = jupiter_mint,
+        token::authority = state,
     )]
     pub reward_vault: Account<'info, TokenAccount>,
     
-    #[account(mut)]
+    #[account(
+        mut,
+        token::mint = jupiter_mint,
+    )]
     pub recipient: Account<'info, TokenAccount>,
     
     #[account(
@@ -259,7 +330,11 @@ pub struct DistributeRewards<'info> {
     #[account(constraint = jupiter_mint.key() == state.jupiter_mint)]
     pub jupiter_mint: AccountInfo<'info>,
     
-    /// CHECK: This is the token program
+    /// CHECK: This provides information about the mint
+    #[account(constraint = jupiter_mint_info.key() == state.jupiter_mint)]
+    pub jupiter_mint_info: Account<'info, Mint>,
+    
+    /// CHECK: Token program
     #[account(address = token::ID)]
     pub token_program: AccountInfo<'info>,
 }
@@ -296,4 +371,8 @@ pub enum JupiterRewardsError {
     NoRewardsToDistribute,
     #[msg("Unauthorized access")]
     Unauthorized,
+    #[msg("Invalid tax rate")]
+    InvalidTaxRate,
+    #[msg("Invalid reward interval")]
+    InvalidRewardInterval,
 } 

@@ -414,7 +414,7 @@ describe("jupiter-rewards", () => {
       provider.connection,
       provider.wallet.payer,
       jupiterMint,
-      userTokenAccount.address,
+      userTokenAccount,
       provider.wallet.payer,
       1000000000 // 1000 tokens with 9 decimals
     );
