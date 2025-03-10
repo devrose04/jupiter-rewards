@@ -13,7 +13,8 @@ import {
   createMint, 
   getOrCreateAssociatedTokenAccount,
   mintTo,
-  getAccount
+  getAccount,
+  getMint
 } from "@solana/spl-token";
 import { expect } from "chai";
 
@@ -30,7 +31,7 @@ describe("jupiter-rewards", () => {
   
   // Test configuration
   const TAX_RATE = 500; // 5.00%
-  const REWARD_INTERVAL_MINUTES = 1; // 1 minute for testing
+  const REWARD_INTERVAL_SECONDS = 60; // 1 minute for testing (in seconds)
   
   // Test accounts
   let jupiterMint: PublicKey;
@@ -38,6 +39,7 @@ describe("jupiter-rewards", () => {
   let taxVault: PublicKey;
   let rewardVault: PublicKey;
   let userTokenAccount: PublicKey;
+  let mintAuthority: PublicKey;
   let user: Keypair;
   let treasuryWallet: Keypair;
   let treasuryTokenAccount: PublicKey;
@@ -46,8 +48,11 @@ describe("jupiter-rewards", () => {
   const TOKEN_2022_PROGRAM_ID = new PublicKey("TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb");
 
   before(async () => {
+    console.log("Setting up test environment...");
+    
     // Create a new user
     user = Keypair.generate();
+    treasuryWallet = Keypair.generate();
     
     // Fund the user with SOL
     console.log(`Funding user ${user.publicKey.toString()} with 2 SOL`);
@@ -62,63 +67,121 @@ describe("jupiter-rewards", () => {
       signature: fundTx
     });
     
-    // Create Jupiter token mint
+    // Create Jupiter token mint with Token-2022
+    console.log("Creating Jupiter token mint with Token-2022...");
     jupiterMint = await createMint(
       provider.connection,
       wallet.payer,
       wallet.publicKey,
-      null,
-      9
+      wallet.publicKey,
+      9, // 9 decimals
+      undefined,
+      { commitment: "confirmed" },
+      TOKEN_2022_PROGRAM_ID
     );
-    
-    // Create user token account
-    userTokenAccount = await getOrCreateAssociatedTokenAccount(
-      provider.connection,
-      wallet.payer,
-      jupiterMint,
-      user.publicKey
-    );
-    
-    // Mint some tokens to the user
-    await mintTo(
-      provider.connection,
-      wallet.payer,
-      jupiterMint,
-      userTokenAccount,
-      wallet.payer,
-      1000000000 // 1000 tokens with 9 decimals
-    );
+    console.log("Jupiter token mint created:", jupiterMint.toString());
     
     // Derive PDAs
     [stateAccount] = PublicKey.findProgramAddressSync(
       [Buffer.from("state")],
       program.programId
     );
+    console.log("State account PDA:", stateAccount.toString());
     
-    [taxVault] = PublicKey.findProgramAddressSync(
-      [Buffer.from("tax_vault")],
+    [mintAuthority] = PublicKey.findProgramAddressSync(
+      [Buffer.from("mint_authority")],
       program.programId
     );
+    console.log("Mint authority PDA:", mintAuthority.toString());
     
-    [rewardVault] = PublicKey.findProgramAddressSync(
-      [Buffer.from("reward_vault")],
-      program.programId
+    // Create token accounts
+    console.log("Creating user token account...");
+    const userTokenAccountInfo = await getOrCreateAssociatedTokenAccount(
+      provider.connection,
+      wallet.payer,
+      jupiterMint,
+      user.publicKey,
+      false,
+      "confirmed",
+      { commitment: "confirmed" },
+      TOKEN_2022_PROGRAM_ID
     );
+    userTokenAccount = userTokenAccountInfo.address;
+    console.log("User token account created:", userTokenAccount.toString());
+    
+    console.log("Creating treasury token account...");
+    const treasuryTokenAccountInfo = await getOrCreateAssociatedTokenAccount(
+      provider.connection,
+      wallet.payer,
+      jupiterMint,
+      treasuryWallet.publicKey,
+      false,
+      "confirmed",
+      { commitment: "confirmed" },
+      TOKEN_2022_PROGRAM_ID
+    );
+    treasuryTokenAccount = treasuryTokenAccountInfo.address;
+    console.log("Treasury token account created:", treasuryTokenAccount.toString());
+    
+    // Mint some tokens to the user
+    console.log("Minting tokens to user...");
+    await mintTo(
+      provider.connection,
+      wallet.payer,
+      jupiterMint,
+      userTokenAccount,
+      wallet.payer,
+      1000000000, // 1000 tokens with 9 decimals
+      [],
+      { commitment: "confirmed" },
+      TOKEN_2022_PROGRAM_ID
+    );
+    console.log("Minted 1000 tokens to user");
   });
 
   it("Initializes the program", async () => {
-    console.log("Initializing program with tax rate:", TAX_RATE, "and reward interval:", REWARD_INTERVAL_MINUTES);
+    console.log("Initializing program with tax rate:", TAX_RATE, "and reward interval:", REWARD_INTERVAL_SECONDS / 60, "minutes");
+    
+    // Create token accounts for tax and reward vaults
+    console.log("Creating tax vault token account...");
+    const taxVaultInfo = await getOrCreateAssociatedTokenAccount(
+      provider.connection,
+      wallet.payer,
+      jupiterMint,
+      stateAccount,
+      true, // allowOwnerOffCurve
+      'confirmed',
+      { commitment: 'confirmed' },
+      TOKEN_2022_PROGRAM_ID
+    );
+    taxVault = taxVaultInfo.address;
+    console.log("Tax vault created:", taxVault.toString());
+
+    console.log("Creating reward vault token account...");
+    const rewardVaultInfo = await getOrCreateAssociatedTokenAccount(
+      provider.connection,
+      wallet.payer,
+      jupiterMint,
+      stateAccount,
+      true, // allowOwnerOffCurve
+      'confirmed',
+      { commitment: 'confirmed' },
+      TOKEN_2022_PROGRAM_ID
+    );
+    rewardVault = rewardVaultInfo.address;
+    console.log("Reward vault created:", rewardVault.toString());
+    
     // Initialize the program
     await program.methods
-      .initialize(TAX_RATE, REWARD_INTERVAL_MINUTES)
+      .initialize(TAX_RATE, REWARD_INTERVAL_SECONDS)
       .accounts({
         state: stateAccount,
         authority: wallet.publicKey,
         jupiterMint: jupiterMint,
         taxVault: taxVault,
         rewardVault: rewardVault,
-        systemProgram: anchor.web3.SystemProgram.programId,
         tokenProgram: TOKEN_2022_PROGRAM_ID,
+        systemProgram: anchor.web3.SystemProgram.programId,
         rent: anchor.web3.SYSVAR_RENT_PUBKEY,
       })
       .rpc();
@@ -130,7 +193,27 @@ describe("jupiter-rewards", () => {
     expect(stateData.taxVault.toString()).to.equal(taxVault.toString());
     expect(stateData.rewardVault.toString()).to.equal(rewardVault.toString());
     expect(stateData.taxRate).to.equal(TAX_RATE);
-    expect(stateData.rewardIntervalMinutes).to.equal(REWARD_INTERVAL_MINUTES);
+    expect(stateData.rewardIntervalMinutes).to.equal(Math.floor(REWARD_INTERVAL_SECONDS / 60));
+    
+    console.log("Program initialized successfully");
+  });
+
+  it("Creates Jupiter token with Token-2022 extensions", async () => {
+    console.log("Creating Jupiter token with Token-2022 extensions...");
+    
+    await program.methods
+      .createJupiterToken(9) // 9 decimals
+      .accounts({
+        state: stateAccount,
+        authority: wallet.publicKey,
+        jupiterMint: jupiterMint,
+        tokenProgram: TOKEN_2022_PROGRAM_ID,
+        systemProgram: anchor.web3.SystemProgram.programId,
+        rent: anchor.web3.SYSVAR_RENT_PUBKEY,
+      })
+      .rpc();
+    
+    console.log("Jupiter token created with Token-2022 extensions");
   });
 
   it("Swaps SOL for Jupiter tokens", async () => {
@@ -156,13 +239,11 @@ describe("jupiter-rewards", () => {
       )
       .accounts({
         state: stateAccount,
+        user: wallet.publicKey,
         recipient: wallet.publicKey, // In a real implementation, this would be Jupiter program
         jupiterMint: jupiterMint,
         rewardVault: rewardVault,
-        mintAuthority: PublicKey.findProgramAddressSync(
-          [Buffer.from("mint_authority")],
-          program.programId
-        )[0],
+        mintAuthority: mintAuthority,
         tokenProgram: TOKEN_2022_PROGRAM_ID,
         systemProgram: anchor.web3.SystemProgram.programId,
       })
@@ -178,12 +259,13 @@ describe("jupiter-rewards", () => {
     const updatedRewardVaultBalance = Number(updatedRewardVaultInfo.amount);
     
     console.log(`Reward vault balance increased by ${(updatedRewardVaultBalance - initialRewardVaultBalance)/10**9} tokens`);
+    expect(updatedRewardVaultBalance).to.be.greaterThan(initialRewardVaultBalance);
   });
 
   it("Distributes rewards after interval has passed", async () => {
     // Wait for the reward interval to pass
     console.log("Waiting for reward interval to pass...");
-    await new Promise(resolve => setTimeout(resolve, REWARD_INTERVAL_MINUTES * 60 * 1000));
+    await new Promise(resolve => setTimeout(resolve, REWARD_INTERVAL_SECONDS * 1000));
     
     // Get initial balances
     const initialUserTokenInfo = await getAccount(
@@ -206,6 +288,14 @@ describe("jupiter-rewards", () => {
     console.log(`Initial user balance: ${initialUserBalance/10**9} tokens`);
     console.log(`Initial reward vault balance: ${initialRewardVaultBalance/10**9} tokens`);
     
+    // Get mint info for decimals
+    const mintInfo = await getMint(
+      provider.connection,
+      jupiterMint,
+      "confirmed",
+      TOKEN_2022_PROGRAM_ID
+    );
+    
     // Distribute rewards
     await program.methods
       .distributeRewards()
@@ -213,8 +303,9 @@ describe("jupiter-rewards", () => {
         state: stateAccount,
         rewardVault: rewardVault,
         recipient: userTokenAccount,
-        jupiterVault: userTokenAccount,
+        jupiterVault: userTokenAccount, // This is the holder's account
         jupiterMint: jupiterMint,
+        jupiterMintInfo: jupiterMint, // This is needed for supply info
         tokenProgram: TOKEN_2022_PROGRAM_ID,
       })
       .rpc();
@@ -258,6 +349,7 @@ describe("jupiter-rewards", () => {
           recipient: userTokenAccount,
           jupiterVault: userTokenAccount,
           jupiterMint: jupiterMint,
+          jupiterMintInfo: jupiterMint, // This is needed for supply info
           tokenProgram: TOKEN_2022_PROGRAM_ID,
         })
         .rpc();
@@ -267,6 +359,7 @@ describe("jupiter-rewards", () => {
     } catch (error) {
       // Verify the error is the expected one
       expect(error.toString()).to.include("TooEarlyForDistribution");
+      console.log("Correctly prevented early distribution");
     }
   });
 
@@ -290,6 +383,90 @@ describe("jupiter-rewards", () => {
     const updatedState = await program.account.stateAccount.fetch(stateAccount);
     expect(updatedState.lastDistribution.toString()).to.equal(newTimestamp.toString());
     expect(updatedState.lastDistribution.toString()).to.not.equal(initialLastDistribution.toString());
+    console.log("Successfully updated last distribution time");
+  });
+
+  it("Collects tax", async () => {
+    // First, ensure there are some tokens in the tax vault
+    // This would normally happen through transfer fees, but we'll simulate it
+    
+    // Mint some tokens directly to the tax vault for testing
+    await mintTo(
+      provider.connection,
+      wallet.payer,
+      jupiterMint,
+      taxVault,
+      wallet.payer,
+      5 * 10**9, // 5 tokens with 9 decimals
+      [],
+      { commitment: "confirmed" },
+      TOKEN_2022_PROGRAM_ID
+    );
+    
+    // Get initial balances
+    const initialTaxVaultInfo = await getAccount(
+      provider.connection,
+      taxVault,
+      "confirmed",
+      TOKEN_2022_PROGRAM_ID
+    );
+    const initialTaxVaultBalance = Number(initialTaxVaultInfo.amount);
+    
+    const initialAuthorityTokenAccount = await getOrCreateAssociatedTokenAccount(
+      provider.connection,
+      wallet.payer,
+      jupiterMint,
+      wallet.publicKey,
+      false,
+      "confirmed",
+      { commitment: "confirmed" },
+      TOKEN_2022_PROGRAM_ID
+    );
+    
+    const initialAuthorityBalance = Number(initialAuthorityTokenAccount.amount);
+    
+    console.log(`Initial tax vault balance: ${initialTaxVaultBalance/10**9} tokens`);
+    console.log(`Initial authority balance: ${initialAuthorityBalance/10**9} tokens`);
+    
+    // Collect tax
+    await program.methods
+      .collectTax()
+      .accounts({
+        state: stateAccount,
+        authority: wallet.publicKey,
+        jupiterMint: jupiterMint,
+        taxVault: taxVault,
+        tokenProgram: TOKEN_2022_PROGRAM_ID,
+      })
+      .rpc();
+    
+    // Verify balances after tax collection
+    const updatedTaxVaultInfo = await getAccount(
+      provider.connection,
+      taxVault,
+      "confirmed",
+      TOKEN_2022_PROGRAM_ID
+    );
+    const updatedTaxVaultBalance = Number(updatedTaxVaultInfo.amount);
+    
+    const updatedAuthorityTokenAccount = await getAccount(
+      provider.connection,
+      initialAuthorityTokenAccount.address,
+      "confirmed",
+      TOKEN_2022_PROGRAM_ID
+    );
+    const updatedAuthorityBalance = Number(updatedAuthorityTokenAccount.amount);
+    
+    console.log(`Updated tax vault balance: ${updatedTaxVaultBalance/10**9} tokens`);
+    console.log(`Updated authority balance: ${updatedAuthorityBalance/10**9} tokens`);
+    
+    // Tax vault should be empty or have less tokens
+    expect(updatedTaxVaultBalance).to.be.lessThan(initialTaxVaultBalance);
+    
+    // Authority should have more tokens
+    expect(updatedAuthorityBalance).to.be.greaterThan(initialAuthorityBalance);
+    
+    console.log(`Authority received ${(updatedAuthorityBalance - initialAuthorityBalance)/10**9} tokens from tax vault`);
   });
 
   // Add a helper function to check balances
@@ -299,124 +476,26 @@ describe("jupiter-rewards", () => {
       userTokenAccount,
       "confirmed",
       TOKEN_2022_PROGRAM_ID
-    );
+    ).catch(() => ({ amount: BigInt(0) }));
     
     const rewardVaultInfo = await getAccount(
       provider.connection,
       rewardVault,
       "confirmed",
       TOKEN_2022_PROGRAM_ID
-    );
+    ).catch(() => ({ amount: BigInt(0) }));
     
     const taxVaultInfo = await getAccount(
       provider.connection,
       taxVault,
       "confirmed",
       TOKEN_2022_PROGRAM_ID
-    ).catch(() => ({ amount: 0 }));
+    ).catch(() => ({ amount: BigInt(0) }));
     
     console.log(`--- ${label} ---`);
     console.log(`User balance: ${Number(userTokenInfo.amount)/10**9} tokens`);
     console.log(`Reward vault: ${Number(rewardVaultInfo.amount)/10**9} tokens`);
-    console.log(`Tax vault: ${Number(taxVaultInfo.amount || 0)/10**9} tokens`);
+    console.log(`Tax vault: ${Number(taxVaultInfo.amount)/10**9} tokens`);
     console.log('----------------');
   }
-
-  // Add a test for transferring tokens with tax
-  it("Transfers tokens with tax applied", async () => {
-    // Create another user account to receive tokens
-    const recipient = Keypair.generate();
-    
-    // Create token account for recipient
-    const recipientTokenAccountInfo = await getOrCreateAssociatedTokenAccount(
-      provider.connection,
-      wallet.payer,
-      jupiterMint,
-      recipient.publicKey,
-      false,
-      "confirmed",
-      { commitment: "confirmed" },
-      TOKEN_2022_PROGRAM_ID
-    );
-    const recipientTokenAccount = recipientTokenAccountInfo.address;
-    
-    // Get initial balances
-    await logTokenBalances("Before Transfer");
-    
-    const transferAmount = 100 * 10**9; // 100 tokens
-    
-    // Transfer tokens from user to recipient
-    await program.methods
-      .transferWithTax(new anchor.BN(transferAmount))
-      .accounts({
-        state: stateAccount,
-        sender: userTokenAccount,
-        recipient: recipientTokenAccount,
-        taxVault: taxVault,
-        authority: user.publicKey,
-        tokenProgram: TOKEN_2022_PROGRAM_ID,
-      })
-      .signers([user])
-      .rpc();
-    
-    // Check balances after transfer
-    await logTokenBalances("After Transfer");
-    
-    // Verify tax was collected
-    const taxVaultInfo = await getAccount(
-      provider.connection,
-      taxVault,
-      "confirmed",
-      TOKEN_2022_PROGRAM_ID
-    );
-    
-    const expectedTax = transferAmount * TAX_RATE / 10000;
-    expect(Number(taxVaultInfo.amount)).to.equal(expectedTax);
-    
-    // Verify recipient received correct amount
-    const recipientTokenInfo = await getAccount(
-      provider.connection,
-      recipientTokenAccount,
-      "confirmed",
-      TOKEN_2022_PROGRAM_ID
-    );
-    
-    expect(Number(recipientTokenInfo.amount)).to.equal(transferAmount - expectedTax);
-  });
-
-  it("Sets up token accounts", async () => {
-    // Create the mint
-    jupiterMint = await createMint(
-      provider.connection,
-      provider.wallet.payer,
-      provider.wallet.publicKey,
-      null,
-      9
-    );
-    
-    // Create token accounts for users
-    userTokenAccount = await getOrCreateAssociatedTokenAccount(
-      provider.connection,
-      provider.wallet.payer,
-      jupiterMint,
-      user.publicKey
-    );
-    
-    treasuryTokenAccount = await getOrCreateAssociatedTokenAccount(
-      provider.connection,
-      provider.wallet.payer,
-      jupiterMint,
-      treasuryWallet.publicKey
-    );
-    
-    // Mint some tokens to the user for testing
-    await mintTo(
-      provider.connection,
-      provider.wallet.payer,
-      jupiterMint,
-      userTokenAccount,
-      provider.wallet.payer,
-      1000000000 // 1000 tokens with 9 decimals
-    );
-  });
 }); 

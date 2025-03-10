@@ -7,6 +7,7 @@ use solana_program::{
     program::invoke,
     system_instruction,
 };
+use spl_token_2022::extension::transfer_fee::instruction as transfer_fee_ix;
 
 declare_id!("BxT5WsUYEDAfiJ9zHZ6U5oDBZZA5AUMXS41mg1KRv78q");
 
@@ -19,60 +20,77 @@ pub mod jupiter_rewards {
         tax_rate: u16,
         reward_interval: i64,
     ) -> Result<()> {
-        // Validate inputs
-        require!(
-            tax_rate <= 1000, // Max 10%
-            JupiterRewardsError::InvalidTaxRate
-        );
-        
-        require!(
-            reward_interval >= 60, // Min 1 minute
-            JupiterRewardsError::InvalidRewardInterval
-        );
+        require!(tax_rate <= 1000, JupiterRewardsError::InvalidTaxRate);
+        require!(reward_interval >= 60, JupiterRewardsError::InvalidRewardInterval);
         
         let state = &mut ctx.accounts.state;
         state.authority = ctx.accounts.authority.key();
         state.tax_rate = tax_rate;
         state.last_distribution = Clock::get()?.unix_timestamp;
-        state.reward_interval_minutes = (reward_interval / 60) as u8; // Convert seconds to minutes
+        state.reward_interval_minutes = (reward_interval / 60) as u8;
         
-        // Set the Jupiter mint, tax vault, and reward vault
         state.jupiter_mint = ctx.accounts.jupiter_mint.key();
         state.tax_vault = ctx.accounts.tax_vault.key();
         state.reward_vault = ctx.accounts.reward_vault.key();
         
-        msg!("Jupiter rewards system initialized with Token-2022 support");
+        Ok(())
+    }
+
+    pub fn create_jupiter_token(
+        ctx: Context<CreateJupiterToken>,
+        decimals: u8,
+    ) -> Result<()> {
+        token_2022::initialize_mint(
+            CpiContext::new(
+                ctx.accounts.token_program.to_account_info(),
+                token_2022::InitializeMint {
+                    mint: ctx.accounts.jupiter_mint.to_account_info(),
+                    rent: ctx.accounts.rent.to_account_info(),
+                },
+            ),
+            decimals,
+            &ctx.accounts.authority.key(),
+            Some(&ctx.accounts.authority.key()),
+        )?;
+        
+        // Initialize transfer fee config (5% fee)
+        let transfer_fee_basis_points = 500;
+        let maximum_fee = 50_000_000;
+        
+        invoke(
+            &transfer_fee_ix::initialize_transfer_fee_config(
+                &token_2022::ID,
+                &ctx.accounts.jupiter_mint.key(),
+                Some(&ctx.accounts.authority.key()),
+                Some(&ctx.accounts.authority.key()),
+                transfer_fee_basis_points,
+                maximum_fee,
+            )?,
+            &[
+                ctx.accounts.jupiter_mint.to_account_info(),
+                ctx.accounts.authority.to_account_info(),
+            ],
+        )?;
+        
         Ok(())
     }
 
     pub fn collect_tax(ctx: Context<CollectTax>) -> Result<()> {
-        // Calculate tax amount (5% of the transaction amount)
-        let transaction_amount = ctx.accounts.user_token_account.amount;
-        let tax_rate = ctx.accounts.state.tax_rate;
-        let tax_amount = (transaction_amount * tax_rate as u64) / 10000;
-        
-        // Check if there are tokens to tax
-        if tax_amount == 0 {
-            msg!("No tokens to tax");
-            return Ok(());
-        }
-        
-        // Transfer the tax from the user's account to the tax vault
-        token_2022::transfer_checked(
-            CpiContext::new(
-                ctx.accounts.token_program.to_account_info(),
-                token_2022::TransferChecked {
-                    from: ctx.accounts.user_token_account.to_account_info(),
-                    mint: ctx.accounts.jupiter_mint.to_account_info(),
-                    to: ctx.accounts.tax_vault.to_account_info(),
-                    authority: ctx.accounts.user.to_account_info(),
-                },
-            ),
-            tax_amount,
-            ctx.accounts.jupiter_mint_info.decimals,
+        invoke(
+            &transfer_fee_ix::withdraw_withheld_tokens_from_mint(
+                &token_2022::ID,
+                &ctx.accounts.jupiter_mint.key(),
+                &ctx.accounts.tax_vault.key(),
+                &ctx.accounts.authority.key(),
+                &[&ctx.accounts.authority.key()],
+            )?,
+            &[
+                ctx.accounts.jupiter_mint.to_account_info(),
+                ctx.accounts.tax_vault.to_account_info(),
+                ctx.accounts.authority.to_account_info(),
+            ],
         )?;
         
-        msg!("Tax collected: {} tokens", tax_amount);
         Ok(())
     }
 
@@ -81,7 +99,6 @@ pub mod jupiter_rewards {
         amount: u64,
         min_output_amount: u64,
     ) -> Result<()> {
-        // Transfer SOL from user to the recipient
         invoke(
             &system_instruction::transfer(
                 &ctx.accounts.user.key(),
@@ -95,7 +112,6 @@ pub mod jupiter_rewards {
             ],
         )?;
         
-        // Mint new Jupiter tokens to the reward vault
         let mint_authority_seeds = &[b"mint_authority".as_ref(), &[*ctx.bumps.get("mint_authority").unwrap()]];
         let mint_authority_signer = &[&mint_authority_seeds[..]];
         
@@ -112,17 +128,13 @@ pub mod jupiter_rewards {
             min_output_amount,
         )?;
         
-        msg!("Swapped {} SOL for {} Jupiter tokens", amount, min_output_amount);
         Ok(())
     }
 
     pub fn distribute_rewards(ctx: Context<DistributeRewards>) -> Result<()> {
-        // Get the current time and state data
         let current_time = Clock::get()?.unix_timestamp;
         let last_distribution = ctx.accounts.state.last_distribution;
         let reward_interval = ctx.accounts.state.reward_interval_minutes as i64 * 60;
-        
-        // Check if enough time has passed since the last distribution
         let time_since_last = current_time - last_distribution;
         
         require!(
@@ -130,77 +142,56 @@ pub mod jupiter_rewards {
             JupiterRewardsError::TooEarlyForDistribution
         );
         
-        // Get the amount of tokens in the reward vault
-        let reward_vault_balance = ctx.accounts.reward_vault.amount;
+        let reward_amount = ctx.accounts.reward_vault.amount;
+        require!(reward_amount > 0, JupiterRewardsError::NoRewardsToDistribute);
+        require!(ctx.accounts.jupiter_vault.amount > 0, JupiterRewardsError::NoEligibleHolders);
         
-        // Ensure there are tokens to distribute
-        require!(
-            reward_vault_balance > 0,
-            JupiterRewardsError::NoRewardsToDistribute
-        );
-        
-        // Check if there are eligible holders
-        require!(
-            ctx.accounts.jupiter_vault.amount > 0,
-            JupiterRewardsError::NoEligibleHolders
-        );
-        
-        // Calculate reward amount based on holdings
         let total_supply = ctx.accounts.jupiter_mint_info.supply;
-        let holder_percentage = (ctx.accounts.jupiter_vault.amount as f64 / total_supply as f64) * 100.0;
-        let reward_amount = ((reward_vault_balance as f64 * holder_percentage / 100.0) as u64)
-            .min(reward_vault_balance);
+        let recipient_balance = ctx.accounts.recipient.amount;
         
-        // Transfer rewards from the reward vault to the recipient
-        let state_bump = *ctx.bumps.get("state").unwrap();
-        let seeds = &[b"state".as_ref(), &[state_bump]];
-        let signer = &[&seeds[..]];
+        // Calculate reward share using integer math to avoid floating point
+        let reward_share = (recipient_balance as u128)
+            .checked_mul(reward_amount as u128)
+            .unwrap_or(0)
+            .checked_div(total_supply as u128)
+            .unwrap_or(0) as u64;
         
-        token_2022::transfer_checked(
-            CpiContext::new_with_signer(
-                ctx.accounts.token_program.to_account_info(),
-                token_2022::TransferChecked {
-                    from: ctx.accounts.reward_vault.to_account_info(),
-                    mint: ctx.accounts.jupiter_mint.to_account_info(),
-                    to: ctx.accounts.recipient.to_account_info(),
-                    authority: ctx.accounts.state.to_account_info(),
-                },
-                signer,
-            ),
-            reward_amount,
-            ctx.accounts.jupiter_mint_info.decimals,
-        )?;
+        if reward_share > 0 {
+            let state_bump = *ctx.bumps.get("state").unwrap();
+            let seeds = &[b"state".as_ref(), &[state_bump]];
+            let signer = &[&seeds[..]];
+            
+            token_2022::transfer_checked(
+                CpiContext::new_with_signer(
+                    ctx.accounts.token_program.to_account_info(),
+                    token_2022::TransferChecked {
+                        from: ctx.accounts.reward_vault.to_account_info(),
+                        mint: ctx.accounts.jupiter_mint.to_account_info(),
+                        to: ctx.accounts.recipient.to_account_info(),
+                        authority: ctx.accounts.state.to_account_info(),
+                    },
+                    signer,
+                ),
+                reward_share,
+                ctx.accounts.jupiter_mint_info.decimals,
+            )?;
+        }
         
-        // Update the last distribution time
+        // Update the last distribution time after the transfer
         ctx.accounts.state.last_distribution = current_time;
-        
-        msg!("Distributed {} Jupiter tokens as rewards", reward_amount);
         Ok(())
     }
 
-    pub fn create_jupiter_token(
-        ctx: Context<CreateJupiterToken>,
-        decimals: u8,
+    pub fn force_update_last_distribution(
+        ctx: Context<ForceUpdateLastDistribution>,
+        new_timestamp: i64,
     ) -> Result<()> {
-        msg!("Creating Jupiter Token with Token-2022");
+        require!(
+            ctx.accounts.authority.key() == ctx.accounts.state.authority,
+            JupiterRewardsError::Unauthorized
+        );
         
-        // Initialize the mint with Token-2022
-        let mint_authority = ctx.accounts.authority.key();
-        
-        token_2022::initialize_mint(
-            CpiContext::new(
-                ctx.accounts.token_program.to_account_info(),
-                token_2022::InitializeMint {
-                    mint: ctx.accounts.jupiter_mint.to_account_info(),
-                    rent: ctx.accounts.rent.to_account_info(),
-                },
-            ),
-            decimals,
-            &mint_authority,
-            Some(&ctx.accounts.authority.key()),
-        )?;
-        
-        msg!("Jupiter Token-2022 created");
+        ctx.accounts.state.last_distribution = new_timestamp;
         Ok(())
     }
 }
@@ -270,19 +261,11 @@ pub struct CollectTax<'info> {
     pub state: Account<'info, StateAccount>,
     
     #[account(mut)]
-    pub user: Signer<'info>,
-    
-    #[account(
-        mut,
-        token::mint = jupiter_mint,
-    )]
-    pub user_token_account: Account<'info, TokenAccount>,
+    pub authority: Signer<'info>,
     
     /// CHECK: Jupiter token mint (Token-2022)
+    #[account(mut)]
     pub jupiter_mint: AccountInfo<'info>,
-    
-    /// CHECK: Jupiter mint info
-    pub jupiter_mint_info: Account<'info, Mint>,
     
     #[account(
         mut,
@@ -362,6 +345,15 @@ pub struct DistributeRewards<'info> {
     /// CHECK: Token program (Token-2022)
     #[account(address = token_2022::ID)]
     pub token_program: AccountInfo<'info>,
+}
+
+#[derive(Accounts)]
+pub struct ForceUpdateLastDistribution<'info> {
+    #[account(mut, seeds = [b"state"], bump)]
+    pub state: Account<'info, StateAccount>,
+    
+    #[account(mut)]
+    pub authority: Signer<'info>,
 }
 
 #[error_code]
