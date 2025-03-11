@@ -13,7 +13,7 @@ fi
 # Check if Solana CLI is installed
 if ! command -v solana &> /dev/null; then
     echo "Installing Solana CLI..."
-    sh -c "$(curl -sSfL https://release.solana.com/v1.16.0/install)"
+    sh -c "$(curl -sSfL https://release.solana.com/v1.18.8install)"
     export PATH="$HOME/.local/share/solana/install/active_release/bin:$PATH"
 fi
 

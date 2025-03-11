@@ -9,10 +9,10 @@ import fs from "fs";
 import path from "path";
 
 // Configuration - CHANGE THESE VALUES
-const TOKEN_NAME = "Jupiter Rewards"; // Change to your desired token name
-const TOKEN_SYMBOL = "JUP"; // Change to your desired token symbol/ticker
-const TOKEN_DESCRIPTION = "Jupiter Rewards token for the Jupiter ecosystem";
-const LOGO_PATH = "./assets/logo.svg"; // Path to your logo file
+const TOKEN_NAME = "Infinite Jupiter Rewards"; // Change to your desired token name
+const TOKEN_SYMBOL = "IJR"; // Change to your desired token symbol/ticker
+const TOKEN_DESCRIPTION = "The first Jupiter rewards token. Hold $IJR. Earn JUP";
+const LOGO_PATH = "./assets/IJR Logo.png"; // Path to your logo file
 
 async function main() {
   try {
